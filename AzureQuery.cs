@@ -15,10 +15,10 @@ namespace WebApplication1.Models
         protected FeedIterator<T> reader;
         protected IList<T> Items;
         
-        public string Token;
-        public string PartId;
-        public int MaxItems = -1;
-        
+        public string Token { get; set; }
+        public string PartId { get; set; }
+        public int MaxItems { get; set; }
+
         public QueryRequestOptions Options
         {
             get
@@ -40,7 +40,9 @@ namespace WebApplication1.Models
         public AzureQuery(Container container)
         {
             this.container = container;
+            this.MaxItems = -1;
         }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!this.disposed)
@@ -52,8 +54,16 @@ namespace WebApplication1.Models
                         this.reader.Dispose();
                     }
                 }
-
+                                
                 this.reader = null;
+                this.container = null;
+                
+                if (this.Items != null)
+                {
+                    this.Items.Clear();
+                }
+
+                this.Items = null;
 
                 this.disposed = true;
             }
@@ -69,7 +79,7 @@ namespace WebApplication1.Models
         {
             QueryDefinition qdef = new QueryDefinition(sql); 
 
-            this.reader = container.GetItemQueryIterator<T>(qdef, this.Token, this.Options);
+            this.reader = this.container.GetItemQueryIterator<T>(qdef, this.Token, this.Options);
             
             await this.getData();
 
@@ -78,7 +88,7 @@ namespace WebApplication1.Models
 
         public async Task<IList<T>> Get(Expression<Func<T, bool>> pred)
         {  
-            this.reader = container.GetItemLinqQueryable<T>(true, this.Token, this.Options).Where<T>(pred).ToFeedIterator(); 
+            this.reader = this.container.GetItemLinqQueryable<T>(true, this.Token, this.Options).Where<T>(pred).ToFeedIterator(); 
             
             await this.getData();
 
@@ -95,6 +105,18 @@ namespace WebApplication1.Models
         public async Task Delete(string id)
         {
             await this.container.DeleteItemAsync<T>(id, new PartitionKey(this.PartId));
+        }
+
+        public async Task<int> Count()
+        {
+            QueryDefinition qdef = new QueryDefinition("SELECT VALUE COUNT(1) FROM c");
+
+            using (FeedIterator<int> iterator = this.container.GetItemQueryIterator<int>(qdef))
+            {
+                FeedResponse<int> rs = await iterator.ReadNextAsync();
+
+                return rs.AsEnumerable().First();
+            }
         }
 
         private async Task getData()

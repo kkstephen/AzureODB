@@ -13,7 +13,6 @@ namespace WebApplication1.Models
     {   
         protected Container container;
         protected FeedIterator<T> reader;
-        protected IList<T> Items;
         
         public string Token { get; set; }
         public string PartId { get; set; }
@@ -35,6 +34,7 @@ namespace WebApplication1.Models
                 return options;
             }
         }
+
         private bool disposed = false;
         
         public AzureQuery(Container container)
@@ -57,14 +57,7 @@ namespace WebApplication1.Models
                                 
                 this.reader = null;
                 this.container = null;
-                
-                if (this.Items != null)
-                {
-                    this.Items.Clear();
-                }
-
-                this.Items = null;
-
+               
                 this.disposed = true;
             }
         }
@@ -80,19 +73,15 @@ namespace WebApplication1.Models
             QueryDefinition qdef = new QueryDefinition(sql); 
 
             this.reader = this.container.GetItemQueryIterator<T>(qdef, this.Token, this.Options);
-            
-            await this.getData();
-
-            return this.Items;
+             
+            return await this.getData();
         }
 
         public async Task<IList<T>> Get(Expression<Func<T, bool>> pred)
         {  
             this.reader = this.container.GetItemLinqQueryable<T>(true, this.Token, this.Options).Where<T>(pred).ToFeedIterator(); 
-            
-            await this.getData();
-
-            return this.Items;
+             
+            return await this.getData();
         }
 
         public async Task<bool> Save(T t) 
@@ -119,19 +108,27 @@ namespace WebApplication1.Models
             }
         }
 
-        private async Task getData()
+        private async Task<IList<T>> getData()
         {
-            this.Items = new List<T>(); 
+            var list = new List<T>(); 
              
             FeedResponse<T> rs = await this.reader.ReadNextAsync();
 
             if (reader.HasMoreResults)
+            {
                 this.Token = rs.ContinuationToken;
-            
+            }
+            else
+            {
+                this.Token = "";
+            }
+
             foreach (T t in rs)
             {
-                Items.Add(t);
-            }  
+                list.Add(t);
+            }
+
+            return list;
         }
     }
 }

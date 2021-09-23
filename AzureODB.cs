@@ -55,9 +55,7 @@ namespace WebApplication1.Models
             var cm = this.cosmos.GetDatabase(dbname);
             var ct = cm.GetContainer(collection); 
                         
-            var q = new AzureQuery<T>(ct) { PartId = partitionKey };
- 
-            return q;
+            return new AzureQuery<T>(ct) { PartId = partitionKey };
         } 
     }
 }

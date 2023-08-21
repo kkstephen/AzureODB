@@ -9,20 +9,29 @@ namespace WebApplication1.Models
 {
     public class AzureODB : IDisposable
     {
-        private CosmosClient cosmos;
+		private CosmosClient cosmos;
 
-        private string uri;
-        private string key; 
+		private string uri;
+		private string key;
+		private string db;
 
-        private bool disposed = false;
+		public double Charge;
 
-        public AzureODB(IConfiguration config)
-        {
-            var connStr = config.GetSection("cosmos");
+		private bool disposed = false;
 
-            uri = connStr.GetSection("uri").Value;
-            key = connStr.GetSection("key").Value;
-        }
+		public Container Container { get; private set; }
+
+		public AzureODB(IConfiguration config)
+		{
+			var connStr = config.GetSection("cosmos");
+
+			this.uri = connStr.GetSection("uri").Value;
+			this.key = connStr.GetSection("key").Value;
+
+			this.db = connStr.GetSection("db").Value;
+
+			this.Charge = 0;
+		}
 
         protected virtual void Dispose(bool disposing)
         {
@@ -34,9 +43,11 @@ namespace WebApplication1.Models
                     {
                         this.cosmos.Dispose();
                     }
+                    
+                    this.cosmos = null;
                 }
-
-                this.cosmos = null;
+                
+                this.Container = null;
 
                 this.disposed = true;
             }
@@ -48,14 +59,40 @@ namespace WebApplication1.Models
             GC.SuppressFinalize(this);
         }
          
-        public AzureQuery<T> Open<T>(string dbname, string collection, string partitionKey)
+        public AzureQuery<T> Open<T>(string collection, string partitionKey)
         {
             this.cosmos = new CosmosClient(this.uri, this.key, new CosmosClientOptions() { ApplicationName = "CosmosDB" });
 
-            var cm = this.cosmos.GetDatabase(dbname);
-            var ct = cm.GetContainer(collection); 
+            var cm = this.cosmos.GetDatabase(this.db);
+            this.Container = cm.GetContainer(collection); 
                         
-            return new AzureQuery<T>(ct) { PartId = partitionKey };
+            return Query<T>(partitionKey);
+        }
+
+        public AzureQuery<T> Query<T>(string partitionKey)
+        {
+            return new AzureQuery<T>(this.Container) { PartId = partitionKey };
+        }
+        
+        public async Task<bool> Set<T>(T t, string pkid)
+        {
+            ItemResponse<T> rs = await Container.UpsertItemAsync(t, new PartitionKey(pkid));
+
+            return rs.StatusCode ==HttpStatusCode.OK || rs.StatusCode == HttpStatusCode.Created;
+        }
+
+        public async Task<int> Count(string sql)
+        {
+            QueryDefinition qdef = new QueryDefinition(sql);
+
+            using (FeedIterator<int> iterator = this.Container.GetItemQueryIterator<int>(qdef))
+            {
+                FeedResponse<int> rs = await iterator.ReadNextAsync();
+
+                this.Charge += rs.RequestCharge;
+
+                return rs.AsEnumerable().First();
+            }
         } 
     }
 }
